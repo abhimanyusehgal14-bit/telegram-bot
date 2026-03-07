@@ -10,21 +10,21 @@ ODDS_API_KEY = os.getenv("ODDS_API_KEY")
 
 bot = Bot(token=BOT_TOKEN)
 
-# store already alerted matches
-sent_matches = set()
+# store previous odds
+previous_odds = {}
+
+# prevent duplicate alerts
+sent_alerts = set()
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Betting bot is running!")
+    await update.message.reply_text("⚽ Favorite flip bot running!")
 
 
 async def scan_matches(context: ContextTypes.DEFAULT_TYPE):
     print("Scanning matches...")
 
-    sports = [
-        "soccer",   # football
-        "tennis"
-    ]
+    sports = ["soccer", "tennis"]
 
     for sport in sports:
 
@@ -37,13 +37,13 @@ async def scan_matches(context: ContextTypes.DEFAULT_TYPE):
         }
 
         try:
-            response = requests.get(url, params=params)
+            r = requests.get(url, params=params)
 
-            if response.status_code != 200:
-                print("API error:", response.status_code)
+            if r.status_code != 200:
+                print("API error:", r.status_code)
                 continue
 
-            games = response.json()
+            games = r.json()
 
             for game in games:
 
@@ -52,23 +52,60 @@ async def scan_matches(context: ContextTypes.DEFAULT_TYPE):
 
                 match_id = f"{sport}-{home}-{away}"
 
-                # prevent duplicate alerts
-                if match_id in sent_matches:
+                bookmakers = game.get("bookmakers", [])
+
+                if not bookmakers:
                     continue
 
-                message = f"""
-🔥 Match Alert
+                markets = bookmakers[0]["markets"]
+
+                if not markets:
+                    continue
+
+                outcomes = markets[0]["outcomes"]
+
+                odds = {o["name"]: o["price"] for o in outcomes}
+
+                if home not in odds or away not in odds:
+                    continue
+
+                home_odds = odds[home]
+                away_odds = odds[away]
+
+                current_favorite = home if home_odds < away_odds else away
+
+                if match_id not in previous_odds:
+                    previous_odds[match_id] = current_favorite
+                    continue
+
+                previous_favorite = previous_odds[match_id]
+
+                # detect flip
+                if previous_favorite != current_favorite:
+
+                    alert_id = f"{match_id}-{current_favorite}"
+
+                    if alert_id not in sent_alerts:
+
+                        message = f"""
+🔥 FAVORITE FLIP DETECTED
 
 Sport: {sport.upper()}
 Match: {home} vs {away}
+
+Old Favorite: {previous_favorite}
+New Favorite: {current_favorite}
+
+Odds:
+{home}: {home_odds}
+{away}: {away_odds}
 """
 
-                await bot.send_message(
-                    chat_id=CHAT_ID,
-                    text=message
-                )
+                        await bot.send_message(chat_id=CHAT_ID, text=message)
 
-                sent_matches.add(match_id)
+                        sent_alerts.add(alert_id)
+
+                previous_odds[match_id] = current_favorite
 
         except Exception as e:
             print("Scanner error:", e)
@@ -81,7 +118,6 @@ async def main():
 
     job_queue = app.job_queue
 
-    # scan every 2 minutes
     job_queue.run_repeating(scan_matches, interval=120, first=10)
 
     print("Bot started")
