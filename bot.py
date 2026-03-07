@@ -10,13 +10,14 @@ ODDS_API_KEY = os.getenv("ODDS_API_KEY")
 
 bot = Bot(token=BOT_TOKEN)
 
+# store already sent matches
+sent_matches = set()
 
-# /start command
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Betting bot is running!")
 
 
-# match scanner
 async def scan_matches(context: ContextTypes.DEFAULT_TYPE):
     print("Scanning matches...")
 
@@ -37,13 +38,22 @@ async def scan_matches(context: ContextTypes.DEFAULT_TYPE):
 
         games = response.json()
 
-        for game in games[:3]:  # just test with first 3 matches
+        for game in games:
             home = game["home_team"]
             away = game["away_team"]
+
+            match_id = f"{home}-{away}"
+
+            # skip if already sent
+            if match_id in sent_matches:
+                continue
 
             message = f"⚽ Match Found\n{home} vs {away}"
 
             await bot.send_message(chat_id=CHAT_ID, text=message)
+
+            # remember this match
+            sent_matches.add(match_id)
 
     except Exception as e:
         print("Scanner error:", e)
@@ -52,14 +62,12 @@ async def scan_matches(context: ContextTypes.DEFAULT_TYPE):
 async def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # command handler
     app.add_handler(CommandHandler("start", start))
 
-    # job queue scanner
     job_queue = app.job_queue
-    job_queue.run_repeating(scan_matches, interval=60, first=10)
+    job_queue.run_repeating(scan_matches, interval=300, first=10)
 
-    print("Bot started successfully")
+    print("Bot started")
 
     await app.initialize()
     await app.start()
