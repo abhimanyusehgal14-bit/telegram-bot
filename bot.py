@@ -1,30 +1,60 @@
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+import requests
+import time
+from telegram import Bot
+from telegram.ext import Updater, CommandHandler
 
 BOT_TOKEN = "YOUR_BOT_TOKEN"
+CHAT_ID = "YOUR_CHAT_ID"
+ODDS_API_KEY = "YOUR_ODDS_API_KEY"
+
+bot = Bot(token=BOT_TOKEN)
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Bot is running!")
+def start(update, context):
+    update.message.reply_text("✅ Bot running and monitoring odds")
 
 
-async def scan_matches(context: ContextTypes.DEFAULT_TYPE):
-    print("Scanning matches...")
+def check_odds():
+    url = "https://api.the-odds-api.com/v4/sports/soccer/odds"
+
+    params = {
+        "apiKey": ODDS_API_KEY,
+        "regions": "eu",
+        "markets": "h2h",
+        "oddsFormat": "decimal"
+    }
+
+    try:
+        response = requests.get(url, params=params)
+        data = response.json()
+
+        for match in data:
+            teams = match["teams"]
+            odds = match["bookmakers"][0]["markets"][0]["outcomes"]
+
+            for outcome in odds:
+                price = outcome["price"]
+
+                if price < 2:
+                    print("Favorite detected:", outcome["name"], price)
+
+    except Exception as e:
+        print("Error:", e)
 
 
 def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    updater = Updater(BOT_TOKEN, use_context=True)
 
-    # command
-    app.add_handler(CommandHandler("start", start))
+    dp = updater.dispatcher
+    dp.add_handler(CommandHandler("start", start))
 
-    # background scanner every 60 sec
-    job_queue = app.job_queue
-    job_queue.run_repeating(scan_matches, interval=60, first=5)
+    updater.start_polling()
 
-    print("Bot started successfully")
+    print("Bot started")
 
-    app.run_polling()
+    while True:
+        check_odds()
+        time.sleep(60)
 
 
 if __name__ == "__main__":
