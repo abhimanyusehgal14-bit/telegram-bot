@@ -10,7 +10,7 @@ ODDS_API_KEY = os.getenv("ODDS_API_KEY")
 
 bot = Bot(token=BOT_TOKEN)
 
-# store already sent matches
+# store already alerted matches
 sent_matches = set()
 
 
@@ -21,42 +21,57 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def scan_matches(context: ContextTypes.DEFAULT_TYPE):
     print("Scanning matches...")
 
-    url = "https://api.the-odds-api.com/v4/sports/soccer/odds"
+    sports = [
+        "soccer",   # football
+        "tennis"
+    ]
 
-    params = {
-        "apiKey": ODDS_API_KEY,
-        "regions": "eu",
-        "markets": "h2h"
-    }
+    for sport in sports:
 
-    try:
-        response = requests.get(url, params=params)
+        url = f"https://api.the-odds-api.com/v4/sports/{sport}/odds"
 
-        if response.status_code != 200:
-            print("API error:", response.status_code)
-            return
+        params = {
+            "apiKey": ODDS_API_KEY,
+            "regions": "eu",
+            "markets": "h2h"
+        }
 
-        games = response.json()
+        try:
+            response = requests.get(url, params=params)
 
-        for game in games:
-            home = game["home_team"]
-            away = game["away_team"]
-
-            match_id = f"{home}-{away}"
-
-            # skip if already sent
-            if match_id in sent_matches:
+            if response.status_code != 200:
+                print("API error:", response.status_code)
                 continue
 
-            message = f"⚽ Match Found\n{home} vs {away}"
+            games = response.json()
 
-            await bot.send_message(chat_id=CHAT_ID, text=message)
+            for game in games:
 
-            # remember this match
-            sent_matches.add(match_id)
+                home = game["home_team"]
+                away = game["away_team"]
 
-    except Exception as e:
-        print("Scanner error:", e)
+                match_id = f"{sport}-{home}-{away}"
+
+                # prevent duplicate alerts
+                if match_id in sent_matches:
+                    continue
+
+                message = f"""
+🔥 Match Alert
+
+Sport: {sport.upper()}
+Match: {home} vs {away}
+"""
+
+                await bot.send_message(
+                    chat_id=CHAT_ID,
+                    text=message
+                )
+
+                sent_matches.add(match_id)
+
+        except Exception as e:
+            print("Scanner error:", e)
 
 
 async def main():
@@ -65,7 +80,9 @@ async def main():
     app.add_handler(CommandHandler("start", start))
 
     job_queue = app.job_queue
-    job_queue.run_repeating(scan_matches, interval=300, first=10)
+
+    # scan every 2 minutes
+    job_queue.run_repeating(scan_matches, interval=120, first=10)
 
     print("Bot started")
 
