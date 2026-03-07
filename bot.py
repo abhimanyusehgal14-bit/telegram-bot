@@ -1,61 +1,44 @@
+import os
 import requests
-import time
 from telegram import Bot
-from telegram.ext import Updater, CommandHandler
+from telegram.ext import Application
+import asyncio
 
-BOT_TOKEN = "YOUR_BOT_TOKEN"
-CHAT_ID = "YOUR_CHAT_ID"
-ODDS_API_KEY = "YOUR_ODDS_API_KEY"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
 bot = Bot(token=BOT_TOKEN)
 
-
-def start(update, context):
-    update.message.reply_text("✅ Bot running and monitoring odds")
-
-
-def check_odds():
-    url = "https://api.the-odds-api.com/v4/sports/soccer/odds"
-
-    params = {
-        "apiKey": ODDS_API_KEY,
-        "regions": "eu",
-        "markets": "h2h",
-        "oddsFormat": "decimal"
-    }
+async def scan_matches(context):
+    print("Scanning matches...")
 
     try:
-        response = requests.get(url, params=params)
-        data = response.json()
+        # example API call placeholder
+        url = "https://api.the-odds-api.com/v4/sports/soccer/odds"
+        response = requests.get(url)
 
-        for match in data:
-            teams = match["teams"]
-            odds = match["bookmakers"][0]["markets"][0]["outcomes"]
-
-            for outcome in odds:
-                price = outcome["price"]
-
-                if price < 2:
-                    print("Favorite detected:", outcome["name"], price)
+        if response.status_code == 200:
+            print("API working")
+        else:
+            print("API error")
 
     except Exception as e:
-        print("Error:", e)
+        print("Scanner error:", e)
 
+async def main():
+    app = Application.builder().token(BOT_TOKEN).build()
 
-def main():
-    updater = Updater(BOT_TOKEN, use_context=True)
+    job_queue = app.job_queue
+    job_queue.run_repeating(scan_matches, interval=60, first=10)
 
-    dp = updater.dispatcher
-    dp.add_handler(CommandHandler("start", start))
+    print("Bot started successfully")
 
-    updater.start_polling()
-
-    print("Bot started")
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
 
     while True:
-        check_odds()
-        time.sleep(60)
-
+        await asyncio.sleep(3600)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
