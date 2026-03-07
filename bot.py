@@ -1,28 +1,30 @@
 import asyncio
-import time
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 BOT_TOKEN = "YOUR_BOT_TOKEN"
 
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Bot is running!")
 
-async def scan_matches():
-    while True:
-        print("Scanning matches...")
-        await asyncio.sleep(60)
 
-async def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+async def scan_matches(context: ContextTypes.DEFAULT_TYPE):
+    print("Scanning matches...")
+
+
+async def post_init(app):
+    app.job_queue.run_repeating(scan_matches, interval=60, first=5)
+
+
+def main():
+    app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", start))
 
-    # start background scanner
-    asyncio.create_task(scan_matches())
-
     print("Bot started...")
-    await app.run_polling()
+    app.run_polling()
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
