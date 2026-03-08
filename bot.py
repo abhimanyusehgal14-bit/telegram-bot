@@ -1,15 +1,13 @@
 import os
 import requests
-from telegram import Update, Bot
+from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 ODDS_API_KEY = os.getenv("ODDS_API_KEY")
 
-bot = Bot(token=BOT_TOKEN)
-
-# store previous odds
+# store previous favorites
 previous_odds = {}
 
 # prevent duplicate alerts
@@ -17,13 +15,19 @@ sent_alerts = set()
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("⚽ Favorite flip bot running!")
+    await update.message.reply_text("⚽ Favorite Flip Bot Running!")
 
 
 async def scan_matches(context: ContextTypes.DEFAULT_TYPE):
     print("Scanning matches...")
 
-    sports = ["soccer", "tennis"]
+    sports = [
+        "soccer_epl",
+        "soccer_spain_la_liga",
+        "soccer_germany_bundesliga",
+        "soccer_italy_serie_a",
+        "soccer_france_ligue_one"
+    ]
 
     for sport in sports:
 
@@ -44,6 +48,8 @@ async def scan_matches(context: ContextTypes.DEFAULT_TYPE):
 
             games = r.json()
 
+            print(f"{sport}: {len(games)} matches found")
+
             for game in games:
 
                 home = game["home_team"]
@@ -56,12 +62,12 @@ async def scan_matches(context: ContextTypes.DEFAULT_TYPE):
                 if not bookmakers:
                     continue
 
-                markets = bookmakers[0]["markets"]
+                markets = bookmakers[0].get("markets", [])
 
                 if not markets:
                     continue
 
-                outcomes = markets[0]["outcomes"]
+                outcomes = markets[0].get("outcomes", [])
 
                 odds = {o["name"]: o["price"] for o in outcomes}
 
@@ -79,7 +85,7 @@ async def scan_matches(context: ContextTypes.DEFAULT_TYPE):
 
                 previous_favorite = previous_odds[match_id]
 
-                # detect flip
+                # detect favorite flip
                 if previous_favorite != current_favorite:
 
                     alert_id = f"{match_id}-{current_favorite}"
@@ -100,7 +106,10 @@ Odds:
 {away}: {away_odds}
 """
 
-                        await bot.send_message(chat_id=CHAT_ID, text=message)
+                        await context.bot.send_message(
+                            chat_id=CHAT_ID,
+                            text=message
+                        )
 
                         sent_alerts.add(alert_id)
 
@@ -116,8 +125,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
 
     job_queue = app.job_queue
-
-    job_queue.run_repeating(scan_matches, interval=120, first=10)
+    job_queue.run_repeating(scan_matches, interval=60, first=10)
 
     print("Bot started")
 
